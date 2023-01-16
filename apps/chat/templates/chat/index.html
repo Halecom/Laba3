@@ -1,0 +1,254 @@
+<head>
+    <title>Chat!</title>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.3/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+
+    <style>
+        html * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        .wrapper {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            background: #FFFFFF;
+        }
+
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            width: 300px;
+            height: 100%;
+            background: #E6E9EF;
+        }
+
+        .add-chat {
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            gap: 10px;
+        }
+
+        .chats {
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+
+        .chat {
+            cursor: pointer;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .chat.selected {
+            font-weight: bold;
+        }
+
+        .delete {
+            padding: 10px;
+            font-size: 10px;
+        }
+
+        .content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .content.hidden {
+            visibility: hidden;
+        }
+
+        .messages {
+            overflow-y: auto;
+            flex-grow: 1;
+            background-image: url("https://blog.1a23.com/wp-content/uploads/sites/2/2020/02/Desktop.png");
+            background-size: cover;
+            background-repeat: repeat-x;
+        }
+
+        .messages-inner {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .message {
+            display: flex;
+            gap: 5px;
+            flex-direction: column;
+            width: fit-content;
+            padding: 10px;
+            border-radius: 10px;
+            background: white;
+            min-width: 300px;
+            max-width: 70%;
+        }
+
+        .nickname {
+            font-weight: bold;
+        }
+
+        .time {
+            color: #707070;
+            font-size: 13px;
+            align-self: end;
+        }
+
+        .input {
+            border-top: 1px solid #4f4f4f;
+            padding: 30px 20px;
+            width: 100%;
+            display: flex;
+            gap: 20px;
+        }
+
+
+        input[name='text'] {
+            flex-grow: 1;
+        }
+    </style>
+</head>
+
+<body>
+<div class="wrapper">
+    <div class="sidebar">
+        <div class="chats">
+            <div class="chats-inner"></div>
+        </div>
+        <div class="add-chat">
+            <input name="name" type="text" placeholder="Название чата">
+            <button name="add-chat">Добавить чат</button>
+        </div>
+    </div>
+    <div class="content hidden">
+        <div class="messages">
+            <div class="messages-inner"></div>
+        </div>
+        <div class="input">
+            <input name="nickname" type="text" placeholder="Никнейм">
+            <input name="text" type="text" placeholder="Введите сообщение">
+            <button name="send-message">Отправить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentChatId = null;
+
+    function showChatMessages(chatId) {
+        $(".content").removeClass("hidden");
+
+        $.ajax(`/chats/${chatId}/messages/`).done(function (data) {
+            currentChatId = chatId;
+            $(".messages-inner").empty();
+
+            for (let message of data) {
+                const messageEl = $(`
+                    <div class="message">
+                        <div class="nickname">${message.nickname}</div>
+                        <div class="text">${message.text}</div>
+                        <div class="time">${moment(message.time).format('hh:mm')}</div>
+                    </div>
+                `);
+                $(".messages-inner").append(messageEl);
+            }
+
+            $('.messages').animate({scrollTop: $('.messages-inner').height()}, 0);
+        });
+    }
+
+    function closeChat() {
+        currentChatId = null;
+        $(".messages-inner").empty();
+        $(".content").addClass("hidden");
+    }
+
+    function deleteChat(chatId) {
+        if (chatId === currentChatId) {
+            closeChat();
+        }
+
+        $.ajax(`/chats/${chatId}/delete/`, {method: 'post'}).done(function (data) {
+            loadChats();
+        });
+    }
+
+    function loadChats() {
+        $(".chats-inner").empty();
+
+        $.ajax("/chats/").done(function (data) {
+            for (let chat of data) {
+                const chatEl = $(`
+                    <div class='chat'>
+                        <div class="name">${chat.name}</div>
+                        <div class="delete">❌</div>
+                    </div>
+                `);
+
+                if (chat.id === currentChatId) {
+                    chatEl.addClass("selected");
+                }
+
+                chatEl.children(".delete").on("click", (e) => {
+                    e.stopPropagation();
+                    deleteChat(chat.id);
+                });
+
+                chatEl.on("click", function () {
+                    if (chat.id === currentChatId) {
+                        closeChat();
+                        $(this).removeClass("selected");
+                    } else {
+                        $('.chat.selected').removeClass("selected");
+                        $(this).addClass("selected");
+                        showChatMessages(chat.id);
+                    }
+                });
+
+                $(".chats-inner").append(chatEl);
+            }
+        })
+    }
+
+    $("button[name='send-message']").on("click", () => {
+        const textEl = $("input[name='text']");
+        const text = textEl.val()
+        const nickname = $("input[name='nickname']").val()
+        textEl.val(null);
+
+        $.ajax(`/chats/${currentChatId}/messages/send/`, {
+            method: "post",
+            data: {nickname, text}
+        }).done(() => {
+            showChatMessages(currentChatId);
+        });
+    });
+
+
+    $("button[name='add-chat']").on("click", () => {
+        const nameEl = $("input[name='name']");
+        const name = nameEl.val()
+        nameEl.val(null);
+
+        $.ajax(`/chats/create/`, {method: "post", data: {name}}).done(() => {
+            loadChats();
+        });
+    });
+
+    loadChats();
+
+    setInterval(() => {
+        if (currentChatId) {
+            showChatMessages(currentChatId);
+        }
+    }, 3000);
+</script>
+</body>
